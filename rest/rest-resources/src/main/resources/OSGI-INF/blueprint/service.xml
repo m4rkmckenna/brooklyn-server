@@ -110,6 +110,9 @@ limitations under the License.
             <bean class="org.apache.brooklyn.rest.util.ShutdownHandlerProvider">
                 <argument ref="shutdownHandler" />
             </bean>
+            <bean class="org.apache.brooklyn.rest.filter.CorsImplSupplierFilter" >
+                <argument ref="localManagementContext" />
+            </bean>
         </jaxrs:providers>
 
         <jaxrs:properties>
