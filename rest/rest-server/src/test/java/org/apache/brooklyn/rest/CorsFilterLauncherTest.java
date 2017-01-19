@@ -194,6 +194,7 @@ public class CorsFilterLauncherTest extends BrooklynRestApiLauncherTestFixture {
         assertOkayResponse(response, "");
     }
     
+    // TODO figure out a way to launch test in karaf like container supplying config from OSGI Persistency Identity file
     private void setCorsFilterFeature(boolean enable, List<String> allowedOrigins) {
         if (enable) {
             BrooklynFeatureEnablement.enable(BrooklynFeatureEnablement.FEATURE_CORS_CXF_PROPERTY);
@@ -205,7 +206,7 @@ public class CorsFilterLauncherTest extends BrooklynRestApiLauncherTestFixture {
         ManagementContext mgmt = LocalManagementContextForTests.builder(true)
                 .useAdditionalProperties(MutableMap.<String, Object>of(
                         BrooklynFeatureEnablement.FEATURE_CORS_CXF_PROPERTY, enable,
-                        CorsImplSupplierFilter.ALLOWED_ORIGINS.getName(), allowedOrigins)
+                        BrooklynFeatureEnablement.FEATURE_CORS_CXF_PROPERTY + "." + CorsImplSupplierFilter.ALLOW_ORIGINS.getName(), allowedOrigins)
                 ).build();
         apiLauncher.managementContext(mgmt);
         useServerForTest(apiLauncher.start());

@@ -26,6 +26,8 @@ import org.apache.brooklyn.config.ConfigKey;
 import org.apache.brooklyn.config.StringConfigMap;
 import org.apache.brooklyn.core.BrooklynFeatureEnablement;
 import org.apache.brooklyn.core.config.ConfigKeys;
+import org.apache.brooklyn.core.config.ConfigPredicates;
+import org.apache.brooklyn.core.config.ConfigUtils;
 import org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,25 +40,40 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * @see BrooklynFeatureEnablement#FEATURE_CORS_CXF_PROPERTY
+ * <p>
+ * Enables support for Cross Origin Resource Sharing (CORS) filtering on requests in BrooklynWebServer.
+ * If enabled, the allowed origins for the CORS headers should be configured
+ * using the <code>brooklyn.experimental.feature.corsCxfFeature.allowedOrigins=[]</code> property.
+ * </p>
+ * <p>
+ * If <code>brooklyn.experimental.feature.corsCxfFeature.allowedOrigins</code> is not is not supplied then allowedOrigins will be a wildcard on all domains.<br>
+ * Not specifying <code>allowedOrigins</code> is strongly discouraged.
+ * </p>
+ * <p>
+ * Currently there is no support for varying these headers on a per-API-resource basis, that is, the same configured headers are applied to all requests.
+ * </p>
+ * <p>
+ * Apache Brooklyn API requests should be exposed to third party web apps with great attention.
+ * </p>
+ * Apache Brooklyn API calls do not use CORS annotations so findResourceMethod is set to false.
  */
 @Provider
 public class CorsImplSupplierFilter extends CrossOriginResourceSharingFilter {
     /**
      * @see CrossOriginResourceSharingFilter#setAllowOrigins(List<String>)
      */
-    public static final ConfigKey<List<String>> ALLOWED_ORIGINS = ConfigKeys.newConfigKey(new TypeToken<List<String>>() {},
-            BrooklynFeatureEnablement.FEATURE_CORS_CXF_PROPERTY + ".allowedOrigins",
+    public static final ConfigKey<List<String>> ALLOW_ORIGINS = ConfigKeys.newConfigKey(new TypeToken<List<String>>() {},
+            "allowedOrigins",
             "List of allowed origins. Access-Control-Allow-Origin header will be returned to client if Origin header in request is matching exactly a value among the list allowed origins. " +
                     "If AllowedOrigins is empty or not specified then all origins are allowed. " +
                     "No wildcard allowed origins are supported.",
             Collections.<String>emptyList());
     
     /**
-     * @see CrossOriginResourceSharingFilter#setAllowHeaders(List<String>) 
+     * @see CrossOriginResourceSharingFilter#setAllowHeaders(List<String>)
      */
-    public static final ConfigKey<List<String>> ALLOWED_HEADERS = ConfigKeys.newConfigKey(new TypeToken<List<String>>() {},
-            BrooklynFeatureEnablement.FEATURE_CORS_CXF_PROPERTY + ".allowedHeaders",
+    public static final ConfigKey<List<String>> ALLOW_HEADERS = ConfigKeys.newConfigKey(new TypeToken<List<String>>() {},
+            "allowedHeaders",
             "List of allowed headers for preflight checks.",
             Collections.<String>emptyList());
 
@@ -64,24 +81,24 @@ public class CorsImplSupplierFilter extends CrossOriginResourceSharingFilter {
      * @see CrossOriginResourceSharingFilter#setAllowCredentials(boolean)
      */
     public static final ConfigKey<Boolean> ALLOW_CREDENTIALS = ConfigKeys.newBooleanConfigKey(
-            BrooklynFeatureEnablement.FEATURE_CORS_CXF_PROPERTY + ".allowCredentials",
+            "allowCredentials",
             "The value for the Access-Control-Allow-Credentials header. If false, no header is added. If true, the\n" +
                     "     * header is added with the value 'true'. False by default.",
             false);
 
     /**
-     * @see CrossOriginResourceSharingFilter#setExposeHeaders(List<String>) 
+     * @see CrossOriginResourceSharingFilter#setExposeHeaders(List<String>)
      */
-    public static final ConfigKey<List<String>> EXPOSED_HEADERS = ConfigKeys.newConfigKey(new TypeToken<List<String>>() {},
-            BrooklynFeatureEnablement.FEATURE_CORS_CXF_PROPERTY + ".exposedHeaders",
+    public static final ConfigKey<List<String>> EXPOSE_HEADERS = ConfigKeys.newConfigKey(new TypeToken<List<String>>() {},
+            "exposedHeaders",
             "A list of non-simple headers to be exposed via Access-Control-Expose-Headers.",
             Collections.<String>emptyList());
 
     /**
-     * @see CrossOriginResourceSharingFilter#setMaxAge(Integer) 
+     * @see CrossOriginResourceSharingFilter#setMaxAge(Integer)
      */
     public static final ConfigKey<Integer> MAX_AGE = ConfigKeys.newIntegerConfigKey(
-            BrooklynFeatureEnablement.FEATURE_CORS_CXF_PROPERTY + ".maxAge",
+            "maxAge",
             "The value for Access-Control-Max-Age.",
             null);
 
@@ -89,48 +106,60 @@ public class CorsImplSupplierFilter extends CrossOriginResourceSharingFilter {
      * @see CrossOriginResourceSharingFilter#setPreflightErrorStatus(Integer)
      */
     public static final ConfigKey<Integer> PREFLIGHT_FAIL_STATUS = ConfigKeys.newIntegerConfigKey(
-            BrooklynFeatureEnablement.FEATURE_CORS_CXF_PROPERTY + ".preflightFailStatus",
+            "preflightFailStatus",
             "Preflight error response status, default is 200.",
             200);
 
     public static final ConfigKey<Boolean> BLOCK_CORS_IF_UNAUTHORIZED = ConfigKeys.newBooleanConfigKey(
-            BrooklynFeatureEnablement.FEATURE_CORS_CXF_PROPERTY + ".blockCorsIfUnauthorized",
+            "blockCorsIfUnauthorized",
             "Do not apply CORS if response is going to be with UNAUTHORIZED status.",
             false);
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CorsImplSupplierFilter.class);
 
-    private static final boolean brooklynFeatureEnabled = BrooklynFeatureEnablement.isEnabled(BrooklynFeatureEnablement.FEATURE_CORS_CXF_PROPERTY);
-    static {
-        if (brooklynFeatureEnabled) {
-            LOGGER.info("CORS brooklyn feature enabled.");
-        }
-    }
+    private boolean corsEnabled = false;
     
+    // For karaf loading
+    public CorsImplSupplierFilter() {}
+
     @VisibleForTesting
     public CorsImplSupplierFilter(@Nullable ManagementContext mgmt) {
         Preconditions.checkNotNull(mgmt,"ManagementContext should be suppplied to CORS filter.");
+        setCorsEnabled(true);
         setFindResourceMethod(false);
-        StringConfigMap configMap = mgmt.getConfig();
-        setAllowOrigins(configMap.getConfig(ALLOWED_ORIGINS));
-        setAllowHeaders(configMap.getConfig(ALLOWED_HEADERS));
-        setAllowCredentials(configMap.getConfig(ALLOW_CREDENTIALS));
-        setExposeHeaders(configMap.getConfig(EXPOSED_HEADERS));
-        setMaxAge(configMap.getConfig(MAX_AGE));
-        setPreflightErrorStatus(configMap.getConfig(PREFLIGHT_FAIL_STATUS));
-        setBlockCorsIfUnauthorized(configMap.getConfig(BLOCK_CORS_IF_UNAUTHORIZED));
+        setCorsEnabled(BrooklynFeatureEnablement.isEnabled(BrooklynFeatureEnablement.FEATURE_CORS_CXF_PROPERTY));
+        StringConfigMap corsProperties = ConfigUtils.filterForPrefixAndStrip(
+                mgmt.getConfig().submap(ConfigPredicates.nameStartsWith(BrooklynFeatureEnablement.FEATURE_CORS_CXF_PROPERTY + ".")).asMapWithStringKeys(),
+                BrooklynFeatureEnablement.FEATURE_CORS_CXF_PROPERTY + ".");
+        setAllowOrigins(corsProperties.getConfig(ALLOW_ORIGINS));
+        setAllowHeaders(corsProperties.getConfig(ALLOW_HEADERS));
+        setAllowCredentials(corsProperties.getConfig(ALLOW_CREDENTIALS));
+        setExposeHeaders(corsProperties.getConfig(EXPOSE_HEADERS));
+        setMaxAge(corsProperties.getConfig(MAX_AGE));
+        setPreflightErrorStatus(corsProperties.getConfig(PREFLIGHT_FAIL_STATUS));
+        setBlockCorsIfUnauthorized(corsProperties.getConfig(BLOCK_CORS_IF_UNAUTHORIZED));
+    }
+    
+    public void setCorsEnabled(boolean enabled) {
+        this.corsEnabled = enabled;
+        setFindResourceMethod(false);
+        if (corsEnabled) {
+            LOGGER.info("CORS brooklyn feature enabled.");
+        } else {
+            LOGGER.info("CORS brooklyn feature disabled.");
+        }
     }
 
     @Override
     public void filter(ContainerRequestContext requestContext) {
-        if (brooklynFeatureEnabled) {
+        if (corsEnabled) {
             super.filter(requestContext);
         }
     }
 
     @Override
     public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) {
-        if (brooklynFeatureEnabled) {
+        if (corsEnabled) {
             super.filter(requestContext, responseContext);
         }
     }

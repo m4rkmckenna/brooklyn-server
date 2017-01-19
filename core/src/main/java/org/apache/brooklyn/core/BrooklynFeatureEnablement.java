@@ -61,23 +61,6 @@ public class BrooklynFeatureEnablement {
     /** whether feeds are automatically registered when set on entities, so that they are persisted */
     public static final String FEATURE_FEED_REGISTRATION_PROPERTY = FEATURE_PROPERTY_PREFIX+".feedRegistration";
 
-    /**
-     * <p>
-     * Enables support for Cross Origin Resource Sharing (CORS) filtering on requests in BrooklynWebServer.
-     * If enabled, the allowed origins for the CORS headers should be configured
-     * using the <code>brooklyn.experimental.feature.corsCxfFeature.allowedOrigins=[]</code> property.
-     * </p>
-     * <p>
-     * If <code>brooklyn.experimental.feature.corsCxfFeature.allowedOrigins</code> is not is not supplied then allowedOrigins will be a wildcard on all domains.<br>
-     * Not specifying <code>allowedOrigins</code> is strongly discouraged.
-     * </p>
-     * <p>
-     * Currently there is no support for varying these headers on a per-API-resource basis, that is, the same configured headers are applied to all requests.
-     * </p>
-     * <p>
-     * Apache Brooklyn API requests should be exposed to third party web apps with great attention.
-     * </p>
-     */
     public static final String FEATURE_CORS_CXF_PROPERTY = FEATURE_PROPERTY_PREFIX + ".corsCxfFeature";
 
     public static final String FEATURE_CATALOG_PERSISTENCE_PROPERTY = FEATURE_PROPERTY_PREFIX+".catalogPersistence";

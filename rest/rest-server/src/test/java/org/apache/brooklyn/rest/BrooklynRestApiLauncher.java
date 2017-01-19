@@ -19,7 +19,6 @@
 package org.apache.brooklyn.rest;
 
 import static com.google.common.base.Preconditions.checkNotNull;
-import static org.apache.brooklyn.rest.filter.CorsImplSupplierFilter.ALLOWED_ORIGINS;
 
 import java.io.File;
 import java.io.FilenameFilter;
@@ -28,7 +27,6 @@ import java.net.InetSocketAddress;
 import java.util.List;
 
 import javax.servlet.Filter;
-import javax.ws.rs.ext.ContextResolver;
 
 import org.apache.brooklyn.api.mgmt.ManagementContext;
 import org.apache.brooklyn.camp.brooklyn.BrooklynCampPlatformLauncherAbstract;
@@ -60,7 +58,6 @@ import org.apache.brooklyn.util.guava.Maybe;
 import org.apache.brooklyn.util.net.Networking;
 import org.apache.brooklyn.util.os.Os;
 import org.apache.brooklyn.util.text.WildcardGlobs;
-import org.apache.cxf.rs.security.cors.CrossOriginResourceSharingFilter;
 import org.eclipse.jetty.jaas.JAASLoginService;
 import org.eclipse.jetty.server.NetworkConnector;
 import org.eclipse.jetty.server.Server;
