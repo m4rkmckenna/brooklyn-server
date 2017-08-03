@@ -27,6 +27,7 @@ import java.util.Map;
 
 import javax.annotation.Nullable;
 
+import io.prometheus.client.Summary;
 import org.apache.brooklyn.api.entity.Application;
 import org.apache.brooklyn.api.entity.EntitySpec;
 import org.apache.brooklyn.api.location.Location;
@@ -89,7 +90,7 @@ import com.google.common.collect.Maps;
  *     .application(new WebClusterDatabaseExample().appDisplayName("Web-cluster example"))
  *     .location("localhost")
  *     .start();
- * 
+ *
  * Entities.dumpInfo(launcher.getApplications());
  * </pre>
  */
@@ -100,22 +101,22 @@ public class BasicLauncher<T extends BasicLauncher<T>> {
     private final Map<String,Object> brooklynAdditionalProperties = Maps.newLinkedHashMap();
     private BrooklynProperties brooklynProperties;
     private ManagementContext managementContext;
-    
+
     private final List<String> locationSpecs = new ArrayList<String>();
     private final List<Location> locations = new ArrayList<Location>();
 
     private final List<EntitySpec<? extends Application>> appSpecsToManage = new ArrayList<>();
     private final List<String> yamlAppsToManage = new ArrayList<String>();
     private final List<Application> apps = new ArrayList<Application>();
-    
+
     private boolean startBrooklynNode = false;
-    
+
     private boolean ignorePersistenceErrors = true;
     private boolean ignoreCatalogErrors = true;
     private boolean ignoreAppErrors = true;
-    
+
     private CatalogInitialization catalogInitialization = null;
-    
+
     private PersistMode persistMode = PersistMode.DISABLED;
     private HighAvailabilityMode highAvailabilityMode = HighAvailabilityMode.DISABLED;
     private String persistenceDir;
@@ -124,9 +125,9 @@ public class BasicLauncher<T extends BasicLauncher<T>> {
     // these default values come from config in HighAvailablilityManagerImpl
     private Duration haHeartbeatTimeoutOverride = null;
     private Duration haHeartbeatPeriodOverride = null;
-    
+
     protected boolean started;
-    
+
     private BrooklynProperties.Factory.Builder brooklynPropertiesBuilder;
 
     private CampPlatform campPlatform;
@@ -140,7 +141,7 @@ public class BasicLauncher<T extends BasicLauncher<T>> {
         return ImmutableList.copyOf(apps);
     }
 
-    /** 
+    /**
      * Specifies that the launcher should build and manage the Brooklyn application
      * described by the given spec.
      * The application will not be started as part of this call (callers can
@@ -175,14 +176,14 @@ public class BasicLauncher<T extends BasicLauncher<T>> {
 
     /**
      * Give the spec of an application, to be created.
-     * 
+     *
      * @see #location(Location)
      */
     public T location(String spec) {
         locationSpecs.add(checkNotNull(spec, "spec"));
         return self();
     }
-    
+
     public T locations(List<String> specs) {
         locationSpecs.addAll(checkNotNull(specs, "specs"));
         return self();
@@ -193,8 +194,8 @@ public class BasicLauncher<T extends BasicLauncher<T>> {
         return self();
     }
 
-    /** 
-     * Specifies the management context this launcher should use. 
+    /**
+     * Specifies the management context this launcher should use.
      * If not specified a new one is created automatically.
      */
     public T managementContext(ManagementContext context) {
@@ -204,7 +205,7 @@ public class BasicLauncher<T extends BasicLauncher<T>> {
     }
 
     /**
-     * Specifies the brooklyn properties to be used. 
+     * Specifies the brooklyn properties to be used.
      * Must not be set if managementContext is explicitly set.
      */
     public T brooklynProperties(BrooklynProperties brooklynProperties){
@@ -214,7 +215,7 @@ public class BasicLauncher<T extends BasicLauncher<T>> {
         this.brooklynProperties = brooklynProperties;
         return self();
     }
-    
+
     /**
      * Specifies a property to be added to the brooklyn properties
      */
@@ -320,13 +321,13 @@ public class BasicLauncher<T extends BasicLauncher<T>> {
         } catch (Exception e) {
             handleSubsystemStartupError(ignorePersistenceErrors, "persistence", e);
         }
-        
+
         try {
             BrooklynMementoRawData memento = managementContext.getRebindManager().retrieveMementoRawData();
             if (transformer != null) memento = transformer.transform(memento);
-            
+
             ManagementPlaneSyncRecord planeState = managementContext.getHighAvailabilityManager().loadManagementPlaneSyncRecord(true);
-            
+
             LOG.info("Copying persisted state to "+destinationDir+(destinationLocationSpec!=null ? " @ "+destinationLocationSpec : ""));
             PersistenceObjectStore destinationObjectStore = BrooklynPersistenceUtils.newPersistenceObjectStore(
                 managementContext, destinationLocationSpec, destinationDir);
@@ -368,27 +369,42 @@ public class BasicLauncher<T extends BasicLauncher<T>> {
         BrooklynPersistenceUtils.writeMemento(managementContext, memento, destinationObjectStore);
     }
 
+
+    private static final Summary mgmtContextInit = Summary.build().name("init_mgmt_context_seconds").help("Management context init duration")
+            .subsystem(BasicLauncher.class.getName().replace("org.apache.brooklyn", "o_a_b").replace('.', '_'))
+            .register();
+    private static final Summary catalogInit = Summary.build().name("init_catalog_seconds").help("catalog init duration")
+            .subsystem(BasicLauncher.class.getName().replace("org.apache.brooklyn", "o_a_b").replace('.', '_'))
+            .register();
+    private static final Summary campInit = Summary.build().name("init_camp_seconds").help("camp init duration")
+            .subsystem(BasicLauncher.class.getName().replace("org.apache.brooklyn", "o_a_b").replace('.', '_'))
+            .register();
+
     /**
-     * Starts the web server (with web console) and Brooklyn applications, as per the specifications configured. 
+     * Starts the web server (with web console) and Brooklyn applications, as per the specifications configured.
      * @return An object containing details of the web server and the management context.
      */
     public T start() {
         if (started) throw new IllegalStateException("Cannot start() or launch() multiple times");
         started = true;
-
+        final Summary.Timer mgmtContextInitTimer = mgmtContextInit.startTimer();
         initManagementContext();
+        mgmtContextInitTimer.observeDuration();
 
+        final Summary.Timer catalogInitTimer = catalogInit.startTimer();
         CatalogInitialization catInit = ((ManagementContextInternal)managementContext).getCatalogInitialization();
 
         markCatalogStartingUp(catInit);
-        
+
         // note: web console is started by subclass overriding this method
         startingUp();
-        
+        final Summary.Timer campInitTimer = campInit.startTimer();
         initCamp();
+        campInitTimer.observeDuration();
         handlePersistence();
         populateCatalog(catInit);
         markCatalogStarted(catInit);
+        catalogInitTimer.observeDuration();
         addLocations();
         markStartupComplete();
         initApps();
@@ -503,11 +519,11 @@ public class BasicLauncher<T extends BasicLauncher<T>> {
             brooklynProperties = ((ManagementContextInternal)managementContext).getBrooklynProperties();
             brooklynProperties.addFromMap(brooklynAdditionalProperties);
         }
-        
+
         if (catalogInitialization!=null) {
             ((ManagementContextInternal)managementContext).setCatalogInitialization(catalogInitialization);
         }
-        
+
     }
 
     protected void handleSubsystemStartupError(boolean ignoreSuchErrors, String system, Exception e) {
@@ -534,11 +550,11 @@ public class BasicLauncher<T extends BasicLauncher<T>> {
                     persistenceLocation = brooklynProperties.getConfig(BrooklynServerConfig.PERSISTENCE_LOCATION_SPEC);
                 }
                 persistenceDir = BrooklynServerPaths.newMainPersistencePathResolver(brooklynProperties).location(persistenceLocation).dir(persistenceDir).resolve();
-                objectStore = BrooklynPersistenceUtils.newPersistenceObjectStore(managementContext, persistenceLocation, persistenceDir, 
+                objectStore = BrooklynPersistenceUtils.newPersistenceObjectStore(managementContext, persistenceLocation, persistenceDir,
                     persistMode, highAvailabilityMode);
-                    
+
                 RebindManager rebindManager = managementContext.getRebindManager();
-                
+
                 BrooklynMementoPersisterToObjectStore persister = new BrooklynMementoPersisterToObjectStore(
                     objectStore, managementContext);
                 PersistenceExceptionHandler persistenceExceptionHandler = PersistenceExceptionHandlerImpl.builder().build();
@@ -553,7 +569,7 @@ public class BasicLauncher<T extends BasicLauncher<T>> {
                     Exceptions.collapseText(e), e);
             }
         }
-        
+
         // Initialise the HA manager as required
         if (highAvailabilityMode == HighAvailabilityMode.DISABLED) {
             LOG.info("High availability disabled");
@@ -571,7 +587,7 @@ public class BasicLauncher<T extends BasicLauncher<T>> {
             haManager.setPersister(persister);
         }
     }
-    
+
     protected void startPersistence() {
         // Now start the HA Manager and the Rebind manager, as required
         if (highAvailabilityMode == HighAvailabilityMode.DISABLED) {
@@ -581,11 +597,11 @@ public class BasicLauncher<T extends BasicLauncher<T>> {
             if (persistMode != PersistMode.DISABLED) {
                 startPersistenceWithoutHA();
             }
-            
+
         } else {
             // Let the HA manager decide when objectstore.prepare and rebindmgr.rebind need to be called 
             // (based on whether other nodes in plane are already running).
-            
+
             HighAvailabilityMode startMode=null;
             switch (highAvailabilityMode) {
                 case AUTO:
@@ -600,7 +616,7 @@ public class BasicLauncher<T extends BasicLauncher<T>> {
             }
             if (startMode==null)
                 throw new IllegalStateException("Unexpected high availability mode "+highAvailabilityMode);
-            
+
             LOG.debug("Management node (with HA) starting");
             HighAvailabilityManager haManager = managementContext.getHighAvailabilityManager();
             // prepare after HA mode is known, to prevent backups happening in standby mode
@@ -727,7 +743,7 @@ public class BasicLauncher<T extends BasicLauncher<T>> {
     public void setBrooklynPropertiesBuilder(BrooklynProperties.Factory.Builder brooklynPropertiesBuilder) {
         this.brooklynPropertiesBuilder = brooklynPropertiesBuilder;
     }
-    
+
     public BrooklynProperties.Factory.Builder getBrooklynPropertiesBuilder() {
         return brooklynPropertiesBuilder;
     }

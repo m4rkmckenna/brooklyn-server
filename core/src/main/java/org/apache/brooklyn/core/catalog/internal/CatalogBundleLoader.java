@@ -28,6 +28,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
+import io.prometheus.client.Counter;
+import io.prometheus.client.Summary;
 import org.apache.brooklyn.api.catalog.CatalogItem;
 import org.apache.brooklyn.api.mgmt.ManagementContext;
 import org.apache.brooklyn.api.typereg.ManagedBundle;
@@ -68,8 +70,16 @@ public class CatalogBundleLoader {
         LOG.warn("Bundle "+bundle+" being loaded with deprecated legacy loader");
         return scanForCatalogInternal(bundle, force, true, true);
     }
-    
+
+
+    private static final Summary scanForCatalogInternalSummary = Summary.build().name("scanForCatalogInternal_seconds").labelNames("symbolic_name")
+            .help("OSGi init in seconds.")
+            .subsystem(CatalogBundleLoader.class.getName().replace("org.apache.brooklyn", "o_a_b").replace('.', '_'))
+            .register();
+
     private Iterable<? extends CatalogItem<?, ?>> scanForCatalogInternal(Bundle bundle, boolean force, boolean validate, boolean legacy) {
+        final Summary.Timer scanTimer = scanForCatalogInternalSummary.labels(bundle.getSymbolicName()).startTimer();
+
         ManagedBundle mb = ((ManagementContextInternal)managementContext).getOsgiManager().get().getManagedBundle(
             new VersionedName(bundle));
 
@@ -106,7 +116,7 @@ public class CatalogBundleLoader {
         } else {
             LOG.debug("No BOM found in {} {} {}", CatalogUtils.bundleIds(bundle));
         }
-
+        scanTimer.observeDuration();
         return catalogItems;
     }
 

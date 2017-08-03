@@ -153,6 +153,8 @@
         <bundle dependency="true">mvn:org.apache.commons/commons-lang3/${commons-lang3.version}</bundle>
         <bundle dependency="true">mvn:org.apache.servicemix.bundles/org.apache.servicemix.bundles.xpp3/${xpp3.servicemix.version}</bundle> <!-- from com.thoughtworks.xstream/xstream -->
         <bundle dependency="true">mvn:org.apache.servicemix.bundles/org.apache.servicemix.bundles.kxml2/${kxml2.servicemix.version}</bundle>
+        <bundle dependency="true">mvn:io.prometheus/simpleclient/0.0.26</bundle>
+        <bundle dependency="true">mvn:io.prometheus/simpleclient_common/0.0.26</bundle>
 
         <!-- TODO: don't use wrap -->
         <bundle dependency="true">wrap:mvn:com.maxmind.geoip2/geoip2/${maxmind.version}</bundle> <!-- from geoip2 -->

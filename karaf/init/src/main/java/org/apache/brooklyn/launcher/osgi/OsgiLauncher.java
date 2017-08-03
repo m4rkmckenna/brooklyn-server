@@ -15,6 +15,9 @@
  */
 package org.apache.brooklyn.launcher.osgi;
 
+import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.Summary;
+import io.prometheus.client.exporter.common.TextFormat;
 import org.apache.brooklyn.api.mgmt.ManagementContext;
 import org.apache.brooklyn.api.mgmt.ha.HighAvailabilityMode;
 import org.apache.brooklyn.core.BrooklynVersionService;
@@ -38,6 +41,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Map;
 
@@ -48,7 +52,11 @@ public class OsgiLauncher extends BasicLauncher<OsgiLauncher> {
 
     private static final Logger LOG = LoggerFactory.getLogger(OsgiLauncher.class);
     public static final String BROOKLYN_CONFIG_PID = "brooklyn";
-    
+
+    private static final Summary initSummary = Summary.build().name("osgi_init_seconds").help("OSGi init in seconds.")
+            .subsystem(OsgiLauncher.class.getName().replace("org.apache.brooklyn", "o_a_b").replace('.', '_'))
+            .register();
+
     private Object reloadLock = new Object();
 
     private BrooklynVersionService brooklynVersion;
@@ -96,11 +104,24 @@ public class OsgiLauncher extends BasicLauncher<OsgiLauncher> {
     // Called by blueprint container
     // init-method can't find the start method for some reason, provide an alternative
     public void init() {
+        final Summary.Timer initTimer = initSummary.startTimer();
         synchronized (reloadLock) {
+
             BrooklynShutdownHooks.resetShutdownFlag();
             LOG.debug("OsgiLauncher init");
             catalogInitialization(new CatalogInitialization(String.format("file:%s", defaultCatalogLocation), false, null, false));
             start();
+        }
+        initTimer.observeDuration();
+        try {
+
+            FileWriter fw = new FileWriter("brooklyn-startup-metrics.txt", true);
+            fw.append(String.format("====================\t%s\t====================\n", System.currentTimeMillis()));
+            TextFormat.write004(fw, CollectorRegistry.defaultRegistry.metricFamilySamples());
+            fw.append(String.format("--------------------\t%s\t--------------------\n\n", System.currentTimeMillis()));
+            fw.close();
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
@@ -144,7 +165,7 @@ public class OsgiLauncher extends BasicLauncher<OsgiLauncher> {
     }
 
 
-    public void setBrooklynProperties(BrooklynProperties brooklynProperties){
+    public void setBrooklynProperties(BrooklynProperties brooklynProperties) {
         brooklynProperties(brooklynProperties);
     }
 

@@ -39,6 +39,7 @@ import java.util.zip.ZipEntry;
 
 import javax.annotation.Nullable;
 
+import io.prometheus.client.Counter;
 import org.apache.brooklyn.api.catalog.BrooklynCatalog;
 import org.apache.brooklyn.api.catalog.CatalogItem;
 import org.apache.brooklyn.api.catalog.CatalogItem.CatalogBundle;
@@ -494,9 +495,16 @@ public class BasicBrooklynCatalog implements BrooklynCatalog {
         return new VersionedName(bundle, version);
     }
 
+
+    static final Counter rootItemCount = Counter.build().name("collectCatalogItemsFromCatalogBomRoot_count").labelNames("symbolic_name")
+            .help("collectCatalogItemsFromCatalogBomRoot count per symbolic name")
+            .subsystem(BasicBrooklynCatalog.class.getName().replace("org.apache.brooklyn", "o_a_b").replace('.', '_'))
+            .register();
+
     /** See comments on {@link #collectCatalogItemsFromItemMetadataBlock(String, ManagedBundle, Map, List, boolean, Map, int, boolean)};
      * this is a shell around that that parses the `brooklyn.catalog` header on the BOM YAML file */
     private void collectCatalogItemsFromCatalogBomRoot(String yaml, ManagedBundle containingBundle, List<CatalogItemDtoAbstract<?, ?>> result, boolean requireValidation, Map<?, ?> parentMeta, int depth, boolean force) {
+        rootItemCount.labels(containingBundle.getSymbolicName()).inc();
         Map<?,?> itemDef = Yamls.getAs(Yamls.parseAll(yaml), Map.class);
         Map<?,?> catalogMetadata = getFirstAsMap(itemDef, "brooklyn.catalog").orNull();
         if (catalogMetadata==null)
@@ -526,6 +534,12 @@ public class BasicBrooklynCatalog implements BrooklynCatalog {
             collectCatalogItemsFromItemMetadataBlock("item:\n"+makeAsIndentedObject(rootItemYaml), containingBundle, rootItem, result, requireValidation, catalogMetadata, 1, force);
         }
     }
+
+
+    static final Counter metaDataBlockCollect = Counter.build().name("collectCatalogItemsFromItemMetadataBlock_count").labelNames("symbolic_name")
+            .help("collectCatalogItemsFromItemMetadataBlock count per symbolic name")
+            .subsystem(BasicBrooklynCatalog.class.getName().replace("org.apache.brooklyn", "o_a_b").replace('.', '_'))
+            .register();
 
     /**
      * Expects item metadata, containing an `item` containing the definition,
@@ -563,7 +577,7 @@ public class BasicBrooklynCatalog implements BrooklynCatalog {
     @SuppressWarnings("unchecked")
     private void collectCatalogItemsFromItemMetadataBlock(String sourceYaml, ManagedBundle containingBundle, Map<?,?> itemMetadata, List<CatalogItemDtoAbstract<?, ?>> result, boolean requireValidation, 
             Map<?,?> parentMetadata, int depth, boolean force) {
-
+        metaDataBlockCollect.labels(containingBundle.getSymbolicName()).inc();
         if (sourceYaml==null) sourceYaml = new Yaml().dump(itemMetadata);
 
         Map<?, ?> itemMetadataWithoutItemDef = MutableMap.builder()
